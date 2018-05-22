@@ -1,0 +1,123 @@
+---
+title: "COGS202_finalProject"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading libraries
+ We are mainly using GAMM4 package to run general additive mixed model, an extension of linear regression.
+```{r}
+library(psych)
+library(plyr)
+library(dplyr);
+library(lme4);
+library(gamm4);
+library(lmtest);
+library(nlme);
+library(ggplot2);
+library(gridExtra);
+library(gtable);
+
+data <- read.csv('PLING_trimmedData_workingdata.csv')
+
+index = which(complete.cases(data$BEH_WISC_DS_Raw) & complete.cases(data$BEH_VMI_Raw))
+
+raw_data <- data[index,]
+
+```
+
+## Variables of interest
+
+#### Demographic variables
+SubjectID: `raw_data$SubjectID`
+Age: `raw_data$Age`
+Gender: `raw_data$Gender`
+Scanner: `raw_data$DeviceSerialNumber.x`
+
+#### Behavioral variables
+WISC: `raw_data$BEH_WISC_DS_DSB_Raw`
+VMI: `raw_data$BEH_VMI_Raw`
+
+#### DTI variables
+
+Corticospinal tract (CST): DTI_fiber_FA.L_CST, DTI_fiber_FA.R_CST
+
+Anterior thalamic radiations (ATR): DTI_fiber_FA.R_ATR, DTI_fiber_FA.L_ATR 
+
+Corpus callosum (CC): DTI_fiber_FA.CC
+
+Superior longitudinal fasciculus: DTI_fiber_FA.R_SLF, DTI_fiber_FA.L_SLF
+
+Inferior longitudinal fasciculus: DTI_fiber_FA.R_ILF, DTI_fiber_FA.L_ILF
+
+Inferior frontal-occipital fasciculus (IFO): DTI_fiber_FA.R_IFO, DTI_fiber_FA.L_IFO 
+
+Cingulum: CgC (cingulum): DTI_fiber_FA.R_CgC, DTI_fiber_FA.L_CgC, 
+
+test code
+```{r}
+
+wisc_dem_fit <- gamm4(BEH_WISC_DS_Raw~ s(Age, k=4, fx=FALSE) + Gender, data= raw_data,  random = ~(1|SubjectID), na.action=na.omit)
+
+summary(wisc_dem_fit$mer)
+
+# adjusted r square
+r_sq = summary(wisc_dem_fit$gam)["r.sq"]
+plot(wisc_dem_fit$gam)
+
+# AIC
+AIC(wisc_dem_fit$mer)
+
+```
+
+
+## Demographic model
+
+Generating training and testing dataset
+```{r}
+
+
+# training dataset: 80% of the data
+smp_size <- floor(0.80 * nrow(raw_data))
+
+MSE_train = rep(NA, 1000)
+MSE_test =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+set.seed(i)
+
+train_ind <- sample(seq_len(nrow(raw_data)), size = smp_size)
+
+train <- raw_data[train_ind, ]
+test <- raw_data[-train_ind, ]
+
+# fitting demographic variables GAMM4 function
+wisc_dem_fit_train <- gamm4(BEH_WISC_DS_Raw~ s(Age, k=4, fx=FALSE) + Gender, data= train,  random = ~(1|SubjectID), na.action=na.omit)
+
+#summary(wisc_dem_fit_train$gam)
+
+MSE_train[i] <- mean((train$BEH_WISC_DS_Raw - fitted(wisc_dem_fit_train$gam))^2)
+
+# using the estimated parameter estimates to predict the test data
+pred_test <- predict(wisc_dem_fit_train$gam, test, na.action=na.exclude)
+
+MSE_test[i] <- mean((test$BEH_WISC_DS_Raw - pred_test)^2)
+
+}
+
+Mean_MSE_train = mean(MSE_train)
+Mean_MSE_test = mean(MSE_test)
+
+Mean_MSE_train
+Mean_MSE_test
+```
+
+## DTI model
+
+
+
+
