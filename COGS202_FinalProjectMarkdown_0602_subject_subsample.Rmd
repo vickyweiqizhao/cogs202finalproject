@@ -1,0 +1,872 @@
+---
+title: "COGS202_finalProject"
+output:
+      html_document:  
+        keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading libraries
+ We are mainly using GAMM4 package to run general additive mixed model, an extension of linear regression.
+```{r}
+library(psych)
+library(plyr)
+library(dplyr);
+library(lme4);
+library(gamm4);
+library(lmtest);
+library(nlme);
+library(ggplot2);
+library(gridExtra);
+library(gtable);
+library(lmerTest)
+
+data <- read.csv('PLING_trimmedData_workingdata.csv')
+
+index = which(complete.cases(data$BEH_WISC_DS_Raw) & complete.cases(data$BEH_VMI_Raw) & complete.cases(data$DTI_fiber_FA.L_CST))
+
+raw_data <- data[index,] ## raw_data is complete data
+
+id.old=unique(raw_data$SubjectID); N=length(id.old)
+raw_data$id.old=raw_data$SubjectID
+raw_data$ID=0
+for(i in 1:N){
+	data_i=raw_data[raw_data$id.old==id.old[i],]
+	data_i$ID=i
+	raw_data[raw_data$id.old==id.old[i],]=data_i
+	rm(data_i)
+}
+
+write.csv(raw_data, "completecases.csv")
+```
+
+## Variables of interest
+
+#### Demographic variables
+SubjectID: `raw_data$SubjectID`
+Age: `raw_data$Age`
+Gender: `raw_data$Gender`
+Scanner: `raw_data$DeviceSerialNumber.x`
+
+#### Behavioral variables
+WISC: `raw_data$BEH_WISC_DS_DSB_Raw`
+VMI: `raw_data$BEH_VMI_Raw`
+
+#### DTI variables
+
+Corticospinal tract (CST): DTI_fiber_FA.L_CST, DTI_fiber_FA.R_CST
+
+```{r}
+raw_data$DTI_fiber_FA.bh_CST = (raw_data$DTI_fiber_FA.L_CST+ raw_data$DTI_fiber_FA.R_CST)/2
+```
+
+Anterior thalamic radiations (ATR): DTI_fiber_FA.R_ATR, DTI_fiber_FA.L_ATR 
+
+```{r}
+raw_data$DTI_fiber_FA.bh_ATR = (raw_data$DTI_fiber_FA.L_ATR+ raw_data$DTI_fiber_FA.R_ATR)/2
+```
+
+Corpus callosum (CC): DTI_fiber_FA.CC
+
+Superior longitudinal fasciculus: DTI_fiber_FA.R_SLF, DTI_fiber_FA.L_SLF
+
+```{r}
+raw_data$DTI_fiber_FA.bh_SLF = (raw_data$DTI_fiber_FA.L_SLF+ raw_data$DTI_fiber_FA.R_SLF)/2
+```
+
+Inferior longitudinal fasciculus: DTI_fiber_FA.R_ILF, DTI_fiber_FA.L_ILF
+
+```{r}
+raw_data$DTI_fiber_FA.bh_ILF = (raw_data$DTI_fiber_FA.L_ILF+ raw_data$DTI_fiber_FA.R_ILF)/2
+```
+
+Inferior frontal-occipital fasciculus (IFO): DTI_fiber_FA.R_IFO, DTI_fiber_FA.L_IFO 
+
+```{r}
+raw_data$DTI_fiber_FA.bh_IFO = (raw_data$DTI_fiber_FA.L_IFO+ raw_data$DTI_fiber_FA.R_IFO)/2
+```
+
+Cingulum: CgC (cingulum): DTI_fiber_FA.R_CgC, DTI_fiber_FA.L_CgC, 
+
+```{r}
+raw_data$DTI_fiber_FA.bh_CgC = (raw_data$DTI_fiber_FA.L_CgC+ raw_data$DTI_fiber_FA.R_CgC)/2
+```
+
+
+## testing for BEST AGE TREND & MODEL for WISC_DS
+```{r}
+
+wisc_dem_fit_gamm4 <- gamm4(BEH_WISC_DS_Raw ~ s(Age, k=4, fx=FALSE) + Gender, data= raw_data,  random = ~(1|SubjectID), na.action=na.omit)
+
+AIC(wisc_dem_fit_gamm4$mer) ##  1817.668
+
+wisc_dem_fit <- lmer(BEH_WISC_DS_Raw ~ Age + Gender + (Age|SubjectID), data= raw_data, na.action=na.omit)
+
+AIC(wisc_dem_fit) ##  1824.679
+
+wisc_dem_fit_RI <- lmer(BEH_WISC_DS_Raw ~ Age + Gender + (1|SubjectID), data= raw_data, na.action=na.omit)
+
+AIC(wisc_dem_fit_RI) ## 1855.542
+
+## quadratic term
+wisc_dem_fit_qua <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender + (Age|SubjectID), data= raw_data, na.action=na.omit)
+
+AIC(wisc_dem_fit_qua) ##  1789.081
+
+## quadratic term
+wisc_dem_fit_qua_RI <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender + (1|SubjectID), data= raw_data, na.action=na.omit)
+
+AIC(wisc_dem_fit_qua_RI) ##  1789.081
+
+```
+
+
+## testing for BEST AGE TREND & MODEL for VMI
+
+```{r}
+
+vmi_dem_fit_gamm4 <- gamm4(BEH_VMI_Raw ~ s(Age, k=4, fx=FALSE) + Gender, data= raw_data,  random = ~(1|SubjectID), na.action=na.omit)
+
+AIC(vmi_dem_fit_gamm4$mer) ## 1778.83
+
+vmi_dem_fit <- lmer(BEH_VMI_Raw ~ Age + Gender + (Age|SubjectID), data= raw_data, na.action=na.omit)
+
+AIC(vmi_dem_fit) ##  1798.771
+
+vmi_dem_fit_RI <- lmer(BEH_VMI_Raw ~ Age + Gender + (1|SubjectID), data= raw_data, na.action=na.omit)
+
+AIC(vmi_dem_fit_RI) ## 1795.54
+
+## quadratic term
+vmi_dem_fit_qua <- lmer(BEH_VMI_Raw ~ Age + I(Age^2) + Gender + (Age|SubjectID), data= raw_data, na.action=na.omit)
+
+AIC(vmi_dem_fit_qua) ## 
+
+
+## quadratic term
+vmi_dem_fit_qua_RI <- lmer(BEH_VMI_Raw ~ Age + I(Age^2) + Gender + (1|SubjectID), data= raw_data, na.action=na.omit)
+
+AIC(vmi_dem_fit_qua_RI) ## 1780.159
+
+```
+
+
+
+Plotting raw data to determine how to model age trend
+```{r}
+
+ggplot(raw_data, aes(x = Age, y = BEH_WISC_DS_Raw)) + geom_line(aes(group=SubjectID), color="red3") + ggtitle('Age trend of WSIC Digital span')
+
+ggsave(filename='Age trend of WSIC Digital span.jpeg', plot = last_plot())
+
+ggplot(raw_data, aes(x = Age, y = BEH_VMI_Raw)) + geom_line(aes(group=SubjectID), color="blue") + ggtitle('Age trend of BEH visual motor integration score')
+
+ggsave(filename='Age trend of BEH visual motor integration score.jpeg', plot = last_plot())
+
+
+```
+
+
+## Demographic model
+
+Generating training and testing dataset for WISC_DS
+```{r}
+
+
+# training dataset: 80% of the data
+smp_size <- floor(0.80 * length(unique(raw_data$ID))) ##304
+
+MSE_train_dem = rep(NA, 1000)
+MSE_test_dem =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	set.seed(i)
+	
+	train_dem_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_dem <- raw_data[is.element(raw_data$ID, train_dem_ind),]
+	test_dem <- raw_data[!(raw_data$ID %in% train_dem$ID),]
+	
+	# fitting demographic variables GAMM4 function
+	wisc_dem_fit_train_dem <- lmer(BEH_WISC_DS_Raw~ Age + I(Age^2) + Gender + (1|SubjectID), data= train_dem, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_dem[i] <- mean((train_dem$BEH_WISC_DS_Raw - predict(wisc_dem_fit_train_dem, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_dem <- predict(wisc_dem_fit_train_dem, newdata= test_dem, re.form=~0, na.action=na.exclude)
+	
+	MSE_test_dem[i] <- mean((test_dem$BEH_WISC_DS_Raw - pred_test_dem)^2)
+	
+}
+
+Mean_MSE_train_dem = mean(MSE_train_dem)
+Mean_MSE_test_dem = mean(MSE_test_dem)
+
+sd_MSE_train_dem = sd(MSE_train_dem)
+sd_MSE_test_dem = sd(MSE_test_dem)
+
+se_MSE_train_dem = sd_MSE_train_dem/sqrt(smp_size)
+se_MSE_test_dem = sd_MSE_test_dem/sqrt(dim(raw_data)[1]-smp_size)
+
+Mean_MSE_train_dem
+Mean_MSE_test_dem
+sd_MSE_train_dem
+sd_MSE_test_dem
+
+```
+
+## testing demographic model of VMI
+
+```{r}
+# training dataset: 80% of the data
+smp_size <- floor(0.80 * length(unique(raw_data$ID))) ##304
+
+MSE_train_VMI_dem = rep(NA, 1000)
+MSE_test_VMI_dem =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	set.seed(i)
+	
+	train_dem_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_dem <- raw_data[is.element(raw_data$ID, train_dem_ind),]
+	test_dem <- raw_data[!(raw_data$ID %in% train_dem$ID),]
+	
+	# fitting demographic variables GAMM4 function
+	vmi_dem_fit_train_dem <- lmer(BEH_VMI_Raw~ Age + I(Age^2) + Gender + (1|SubjectID), data= train_dem, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_VMI_dem[i] <- mean((train_dem$BEH_VMI_Raw - predict(vmi_dem_fit_train_dem, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_VMI_dem <- predict(vmi_dem_fit_train_dem, newdata= test_dem, re.form=~0, na.action=na.omit)
+
+	MSE_test_VMI_dem[i] <- mean((test_dem$BEH_VMI_Raw - pred_test_VMI_dem)^2)
+	
+}
+
+Mean_MSE_train_VMI_dem = mean(MSE_train_VMI_dem)
+Mean_MSE_test_VMI_dem = mean(MSE_test_VMI_dem)
+
+sd_MSE_train_VMI_dem = sd(MSE_train_VMI_dem)
+sd_MSE_test_VMI_dem = sd(MSE_test_VMI_dem)
+
+se_MSE_train_VMI_dem = sd_MSE_train_VMI_dem/sqrt(smp_size)
+se_MSE_test_VMI_dem =sd_MSE_test_VMI_dem/sqrt(dim(raw_data)[1]-smp_size)
+
+
+Mean_MSE_train_VMI_dem
+Mean_MSE_test_VMI_dem
+
+sd_MSE_train_VMI_dem
+sd_MSE_test_VMI_dem
+
+```
+
+## DTI model
+
+## 1 DTI variable
+```{r}
+
+DTI_var_list = c("DTI_fiber_FA.bh_CST", "DTI_fiber_FA.bh_ATR", "DTI_fiber_FA.CC", "DTI_fiber_FA.bh_SLF", "DTI_fiber_FA.bh_ILF", "DTI_fiber_FA.bh_IFO", "DTI_fiber_FA.bh_CgC")
+
+ind = c(which(names(raw_data)=="DTI_fiber_FA.bh_CST"), which(names(raw_data)=="DTI_fiber_FA.bh_ATR"), which(names(raw_data)=="DTI_fiber_FA.CC"), which(names(raw_data)=="DTI_fiber_FA.bh_SLF"), which(names(raw_data)=="DTI_fiber_FA.bh_ILF"), which(names(raw_data)=="DTI_fiber_FA.bh_IFO"), which(names(raw_data)=="DTI_fiber_FA.bh_CgC")) 
+
+AIC_1var_DTI <- rep(NA, length(ind))
+
+for (i in 1:length(ind)){
+	raw_data$yy = NA
+	raw_data[which(names(raw_data)=="yy")] = raw_data[ind[i]]
+	
+	wisc_dem_fit_DTI_1var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ yy + (1|SubjectID), data= raw_data, na.action=na.omit)
+	AIC_1var_DTI[i] <- AIC(wisc_dem_fit_DTI_1var)
+	
+	rev_ind <- which(names(raw_data)=="yy")
+	raw_data <- raw_data[-rev_ind]
+}
+
+AIC_1var_DTI
+
+var1_AIC <- rbind.data.frame(DTI_var_list, round(AIC_1var_DTI, digits = 3))
+
+write.csv(var1_AIC, "var1_AIC.csv")
+```
+
+
+## 2 DTI variables
+```{r}
+
+
+
+DTI_var2_list = c("DTI_fiber_FA.bh_CST", "DTI_fiber_FA.bh_ATR", "DTI_fiber_FA.CC", "DTI_fiber_FA.bh_SLF", "DTI_fiber_FA.bh_ILF", "DTI_fiber_FA.bh_CgC")
+
+ind2 = c(which(names(raw_data)=="DTI_fiber_FA.bh_CST"), which(names(raw_data)=="DTI_fiber_FA.bh_ATR"), which(names(raw_data)=="DTI_fiber_FA.CC"), which(names(raw_data)=="DTI_fiber_FA.bh_SLF"), which(names(raw_data)=="DTI_fiber_FA.bh_ILF"), which(names(raw_data)=="DTI_fiber_FA.bh_CgC")) 
+
+
+AIC_2var_DTI <- rep(NA, length(ind2))
+
+for (i in 1:length(ind2)){
+	raw_data$yy = NA
+	raw_data[which(names(raw_data)=="yy")] = raw_data[ind2[i]]
+	
+	wisc_dem_fit_DTI_2var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + yy + (1|SubjectID), data= raw_data, na.action=na.omit)
+	AIC_2var_DTI[i] <- AIC(wisc_dem_fit_DTI_2var)
+	
+	rev_ind <- which(names(raw_data)=="yy")
+	raw_data <- raw_data[-rev_ind]
+}
+
+AIC_2var_DTI
+
+var2_AIC <- rbind.data.frame(DTI_var2_list, round(AIC_2var_DTI, digits = 3))
+
+write.csv(var2_AIC, "var2_AIC.csv")
+```
+
+
+
+
+## 3DTI variables
+```{r}
+
+DTI_var3_list = c("DTI_fiber_FA.bh_CST", "DTI_fiber_FA.bh_ATR", "DTI_fiber_FA.CC", "DTI_fiber_FA.bh_SLF", "DTI_fiber_FA.bh_ILF")
+
+ind3 = c(which(names(raw_data)=="DTI_fiber_FA.bh_CST"), which(names(raw_data)=="DTI_fiber_FA.bh_ATR"), which(names(raw_data)=="DTI_fiber_FA.CC"), which(names(raw_data)=="DTI_fiber_FA.bh_SLF"), which(names(raw_data)=="DTI_fiber_FA.bh_ILF")) 
+
+
+AIC_3var_DTI <- rep(NA, length(ind3))
+
+for (i in 1:length(ind3)){
+	raw_data$yy = NA
+	raw_data[which(names(raw_data)=="yy")] = raw_data[ind3[i]]
+	
+	wisc_dem_fit_DTI_3var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC + yy + (1|SubjectID), data= raw_data, na.action=na.omit)
+	AIC_3var_DTI[i] <- AIC(wisc_dem_fit_DTI_3var)
+	
+	rev_ind <- which(names(raw_data)=="yy")
+	raw_data <- raw_data[-rev_ind]
+}
+
+AIC_3var_DTI
+
+var3_AIC <- rbind.data.frame(DTI_var3_list, round(AIC_3var_DTI, digits = 3))
+
+write.csv(var3_AIC, "var3_AIC.csv")
+```
+
+
+
+## 4DTI variables
+```{r}
+
+DTI_var4_list = c("DTI_fiber_FA.bh_CST", "DTI_fiber_FA.bh_ATR", "DTI_fiber_FA.bh_SLF", "DTI_fiber_FA.bh_ILF")
+
+ind4 = c(which(names(raw_data)=="DTI_fiber_FA.bh_CST"), which(names(raw_data)=="DTI_fiber_FA.bh_ATR"), which(names(raw_data)=="DTI_fiber_FA.bh_SLF"), which(names(raw_data)=="DTI_fiber_FA.bh_ILF")) 
+
+
+AIC_4var_DTI <- rep(NA, length(ind4))
+logLike_4var_DTI <- rep(NA, length(ind4))
+
+for (i in 1:length(ind4)){
+	raw_data$yy = NA
+	raw_data[which(names(raw_data)=="yy")] = raw_data[ind4[i]]
+	
+	wisc_dem_fit_DTI_4var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC +DTI_fiber_FA.CC + yy + (1|SubjectID), data= raw_data, na.action=na.omit)
+	
+	AIC_4var_DTI[i] <- AIC(wisc_dem_fit_DTI_4var)
+	logLike_4var_DTI[i] <- logLik(wisc_dem_fit_DTI_4var)
+	
+	rev_ind <- which(names(raw_data)=="yy")
+	raw_data <- raw_data[-rev_ind]
+}
+AIC_4var_DTI
+logLike_4var_DTI
+
+var4_AIC <- rbind.data.frame(DTI_var4_list, round(AIC_4var_DTI, digits = 3))
+
+write.csv(var4_AIC, "var4_AIC.csv")
+
+```
+
+
+## 5DTI variables
+```{r}
+
+DTI_var5_list = c("DTI_fiber_FA.bh_CST", "DTI_fiber_FA.bh_ATR", "DTI_fiber_FA.bh_SLF")
+
+ind5 = c(which(names(raw_data)=="DTI_fiber_FA.bh_CST"), which(names(raw_data)=="DTI_fiber_FA.bh_ATR"), which(names(raw_data)=="DTI_fiber_FA.bh_SLF")) 
+
+
+AIC_5var_DTI <- rep(NA, length(ind5))
+logLike_5var_DTI <- rep(NA, length(ind5))
+
+for (i in 1:length(ind5)){
+	raw_data$yy = NA
+	raw_data[which(names(raw_data)=="yy")] = raw_data[ind5[i]]
+	
+	wisc_dem_fit_DTI_5var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC +DTI_fiber_FA.CC + DTI_fiber_FA.bh_ILF + yy + (1|SubjectID), data= raw_data, na.action=na.omit)
+	
+	AIC_5var_DTI[i] <- AIC(wisc_dem_fit_DTI_5var)
+	logLike_5var_DTI[i] <- logLik(wisc_dem_fit_DTI_5var)
+	
+	rev_ind <- which(names(raw_data)=="yy")
+	raw_data <- raw_data[-rev_ind]
+}
+AIC_5var_DTI
+logLike_5var_DTI
+
+var5_AIC <- rbind.data.frame(DTI_var5_list, round(AIC_5var_DTI, digits = 3))
+
+write.csv(var5_AIC, "var5_AIC.csv")
+
+```
+
+
+
+## 6DTI variables
+```{r}
+
+DTI_var6_list = c("DTI_fiber_FA.bh_CST", "DTI_fiber_FA.bh_ATR")
+
+ind6 = c(which(names(raw_data)=="DTI_fiber_FA.bh_CST"), which(names(raw_data)=="DTI_fiber_FA.bh_ATR")) 
+
+
+AIC_6var_DTI <- rep(NA, length(ind6))
+logLike_6var_DTI <- rep(NA, length(ind6))
+
+for (i in 1:length(ind6)){
+	raw_data$yy = NA
+	raw_data[which(names(raw_data)=="yy")] = raw_data[ind6[i]]
+	
+	wisc_dem_fit_DTI_6var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC +DTI_fiber_FA.CC + DTI_fiber_FA.bh_ILF+ DTI_fiber_FA.bh_SLF+ yy + (1|SubjectID), data= raw_data, na.action=na.omit)
+	
+	AIC_6var_DTI[i] <- AIC(wisc_dem_fit_DTI_6var)
+	logLike_6var_DTI[i] <- logLik(wisc_dem_fit_DTI_6var)
+	
+	rev_ind <- which(names(raw_data)=="yy")
+	raw_data <- raw_data[-rev_ind]
+}
+AIC_6var_DTI
+logLike_6var_DTI
+
+var6_AIC <- rbind.data.frame(DTI_var6_list, round(AIC_6var_DTI, digits = 3))
+
+write.csv(var6_AIC, "var6_AIC.csv")
+
+```
+
+
+Cross validation 
+
+## 1 var model
+
+```{r}
+# training dataset: 80% of the data
+smp_size <- floor(0.80 * length(unique(raw_data$ID))) ##304
+
+MSE_train_1var = rep(NA, 1000)
+MSE_test_1var =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	set.seed(i)
+	
+	train_1var_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_1var <- raw_data[is.element(raw_data$ID, train_1var_ind),]
+	test_1var <- raw_data[!(raw_data$ID %in% train_1var$ID),]
+
+	# fitting demographic variables GAMM4 function
+	wisc_dem_fit_DTI_1var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + (1|SubjectID), data= train_1var, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_1var[i] <- mean((train_1var$BEH_WISC_DS_Raw - predict(wisc_dem_fit_DTI_1var, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_1var <- predict(wisc_dem_fit_DTI_1var, newdata= test_1var, re.form=~0, na.action=na.exclude)
+	
+	MSE_test_1var[i] <- mean((test_1var$BEH_WISC_DS_Raw - pred_test_1var)^2)
+	
+}
+
+Mean_MSE_train_1var = mean(MSE_train_1var)
+Mean_MSE_test_1var = mean(MSE_test_1var)
+
+sd_MSE_train_1var = sd(MSE_train_1var)
+sd_MSE_test_1var = sd(MSE_test_1var)
+
+se_MSE_train_1var = sd_MSE_train_1var/sqrt(smp_size)
+se_MSE_test_1var = sd_MSE_test_1var/sqrt(dim(raw_data)[1]-smp_size)
+
+
+Mean_MSE_train_1var
+Mean_MSE_test_1var
+
+sd_MSE_train_1var
+sd_MSE_test_1var
+
+```
+
+
+
+
+## 2 var model
+
+```{r}
+
+
+# training dataset: 80% of the data
+#smp_size <- floor(0.80 * length(unique(raw_data$ID))) ##304
+
+MSE_train_2var = rep(NA, 1000)
+MSE_test_2var =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	train_2var_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_2var <- raw_data[is.element(raw_data$ID, train_2var_ind),]
+	test_2var <- raw_data[!(raw_data$ID %in% train_2var$ID),]
+	
+	# fitting demographic variables GAMM4 function
+	wisc_dem_fit_DTI_2var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC+ (1|SubjectID), data= train_2var, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_2var[i] <- mean((train_2var$BEH_WISC_DS_Raw - predict(wisc_dem_fit_DTI_2var, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_2var <- predict(wisc_dem_fit_DTI_2var, newdata= test_2var, re.form=~0, na.action=na.exclude)
+	
+	MSE_test_2var[i] <- mean((test_2var$BEH_WISC_DS_Raw - pred_test_2var)^2)
+	
+}
+
+Mean_MSE_train_2var = mean(MSE_train_2var)
+Mean_MSE_test_2var = mean(MSE_test_2var)
+
+sd_MSE_train_2var = sd(MSE_train_2var)
+sd_MSE_test_2var = sd(MSE_test_2var)
+
+se_MSE_train_2var = sd_MSE_train_2var/sqrt(smp_size)
+se_MSE_test_2var = sd_MSE_test_2var/sqrt(dim(raw_data)[1]-smp_size)
+
+
+Mean_MSE_train_2var
+Mean_MSE_test_2var
+
+sd_MSE_train_2var
+sd_MSE_test_2var
+
+```
+
+
+
+
+
+## 3 var model
+
+```{r}
+
+
+# training dataset: 80% of the data
+
+MSE_train_3var = rep(NA, 1000)
+MSE_test_3var =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	set.seed(i)
+	
+	train_3var_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_3var <- raw_data[is.element(raw_data$ID, train_3var_ind),]
+	test_3var <- raw_data[!(raw_data$ID %in% train_3var$ID),]
+	
+	# fitting demographic variables GAMM4 function
+	wisc_dem_fit_DTI_3var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC + DTI_fiber_FA.CC+ (1|SubjectID), data= train_3var, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_3var[i] <- mean((train_3var$BEH_WISC_DS_Raw - predict(wisc_dem_fit_DTI_3var, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_3var <- predict(wisc_dem_fit_DTI_3var, newdata= test_3var, re.form=~0, na.action=na.exclude)
+	
+	MSE_test_3var[i] <- mean((test_3var$BEH_WISC_DS_Raw - pred_test_3var)^2)
+	
+}
+
+Mean_MSE_train_3var = mean(MSE_train_3var)
+Mean_MSE_test_3var = mean(MSE_test_3var)
+
+sd_MSE_train_3var = sd(MSE_train_3var)
+sd_MSE_test_3var = sd(MSE_test_3var)
+
+se_MSE_train_3var = sd_MSE_train_3var/sqrt(smp_size)
+se_MSE_test_3var = sd_MSE_test_3var/sqrt(dim(raw_data)[1]-smp_size)
+
+Mean_MSE_train_3var
+Mean_MSE_test_3var
+
+sd_MSE_train_3var
+sd_MSE_test_3var
+
+```
+
+
+
+
+
+
+
+## 4 var model
+
+```{r}
+
+
+# training dataset: 80% of the data
+
+MSE_train_4var = rep(NA, 1000)
+MSE_test_4var =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	set.seed(i)
+	
+	train_4var_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_4var <- raw_data[is.element(raw_data$ID, train_4var_ind),]
+	test_4var <- raw_data[!(raw_data$ID %in% train_4var$ID),]
+	
+	# fitting demographic variables GAMM4 function
+	wisc_dem_fit_DTI_4var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC + DTI_fiber_FA.CC + DTI_fiber_FA.bh_ILF + (1|SubjectID), data= train_4var, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_4var[i] <- mean((train_4var$BEH_WISC_DS_Raw - predict(wisc_dem_fit_DTI_4var, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_4var <- predict(wisc_dem_fit_DTI_4var, newdata= test_4var, re.form=~0, na.action=na.exclude)
+	
+	MSE_test_4var[i] <- mean((test_4var$BEH_WISC_DS_Raw - pred_test_4var)^2)
+	
+}
+
+Mean_MSE_train_4var = mean(MSE_train_4var)
+Mean_MSE_test_4var = mean(MSE_test_4var)
+
+sd_MSE_train_4var = sd(MSE_train_4var)
+sd_MSE_test_4var = sd(MSE_test_4var)
+
+se_MSE_train_4var = sd_MSE_train_4var/sqrt(smp_size)
+se_MSE_test_4var = sd_MSE_test_4var/sqrt(dim(raw_data)[1]-smp_size)
+
+
+Mean_MSE_train_4var
+Mean_MSE_test_4var
+
+sd_MSE_train_4var
+sd_MSE_test_4var
+
+```
+
+
+
+## 5 var model
+
+```{r}
+
+
+# training dataset: 80% of the data
+MSE_train_5var = rep(NA, 1000)
+MSE_test_5var =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	set.seed(i)
+	
+	train_5var_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_5var <- raw_data[is.element(raw_data$ID, train_5var_ind),]
+	test_5var <- raw_data[!(raw_data$ID %in% train_5var$ID),]
+	
+	# fitting demographic variables GAMM4 function
+	wisc_dem_fit_DTI_5var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC + DTI_fiber_FA.CC + DTI_fiber_FA.bh_ILF + DTI_fiber_FA.bh_SLF + (1|SubjectID), data= train_5var, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_5var[i] <- mean((train_5var$BEH_WISC_DS_Raw - predict(wisc_dem_fit_DTI_5var, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_5var <- predict(wisc_dem_fit_DTI_5var, newdata= test_5var, re.form=~0, na.action=na.exclude)
+	
+	MSE_test_5var[i] <- mean((test_5var$BEH_WISC_DS_Raw - pred_test_5var)^2)
+	
+}
+
+Mean_MSE_train_5var = mean(MSE_train_5var)
+Mean_MSE_test_5var = mean(MSE_test_5var)
+
+sd_MSE_train_5var = sd(MSE_train_5var)
+sd_MSE_test_5var = sd(MSE_test_5var)
+
+se_MSE_train_5var = sd_MSE_train_5var/sqrt(smp_size)
+se_MSE_test_5var = sd_MSE_test_5var/sqrt(dim(raw_data)[1]-smp_size)
+
+Mean_MSE_train_5var
+Mean_MSE_test_5var
+
+sd_MSE_train_5var
+sd_MSE_test_5var
+
+```
+
+
+
+## 6 var model
+
+```{r}
+
+
+# training dataset: 80% of the data
+MSE_train_6var = rep(NA, 1000)
+MSE_test_6var =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	set.seed(i)
+	
+	train_6var_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_6var <- raw_data[is.element(raw_data$ID, train_6var_ind),]
+	test_6var <- raw_data[!(raw_data$ID %in% train_6var$ID),]
+
+		# fitting demographic variables GAMM4 function
+	wisc_dem_fit_DTI_6var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC + DTI_fiber_FA.CC + DTI_fiber_FA.bh_ILF + DTI_fiber_FA.bh_SLF + DTI_fiber_FA.bh_CST + (1|SubjectID), data= train_6var, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_6var[i] <- mean((train_6var$BEH_WISC_DS_Raw - predict(wisc_dem_fit_DTI_6var, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_6var <- predict(wisc_dem_fit_DTI_6var, newdata= test_6var, re.form=~0, na.action=na.exclude)
+	
+	MSE_test_6var[i] <- mean((test_6var$BEH_WISC_DS_Raw - pred_test_6var)^2)
+	
+}
+
+Mean_MSE_train_6var = mean(MSE_train_6var)
+Mean_MSE_test_6var = mean(MSE_test_6var)
+
+sd_MSE_train_6var = sd(MSE_train_6var)
+sd_MSE_test_6var = sd(MSE_test_6var)
+
+se_MSE_train_6var = sd_MSE_train_6var/sqrt(smp_size)
+se_MSE_test_6var = sd_MSE_test_6var/sqrt(dim(raw_data)[1]-smp_size)
+
+
+Mean_MSE_train_6var
+Mean_MSE_test_6var
+
+sd_MSE_train_6var
+sd_MSE_test_6var
+
+```
+
+
+
+## 7 var model
+
+```{r}
+
+
+# training dataset: 80% of the data
+MSE_train_7var = rep(NA, 1000)
+MSE_test_7var =  rep(NA, 1000)
+
+for (i in 1:1000){
+	
+	set.seed(i)
+	
+	train_7var_ind <- sample(seq_len(length(unique(raw_data$ID))), size = smp_size)
+	
+	train_7var <- raw_data[is.element(raw_data$ID, train_7var_ind),]
+	test_7var <- raw_data[!(raw_data$ID %in% train_7var$ID),]
+
+	
+	# fitting demographic variables GAMM4 function
+	wisc_dem_fit_DTI_7var <- lmer(BEH_WISC_DS_Raw ~ Age + I(Age^2) + Gender+ DTI_fiber_FA.bh_IFO + DTI_fiber_FA.bh_CgC + DTI_fiber_FA.CC + DTI_fiber_FA.bh_ILF + DTI_fiber_FA.bh_SLF + DTI_fiber_FA.bh_CST + DTI_fiber_FA.bh_ATR + (1|SubjectID), data= train_7var, na.action=na.omit)
+	
+	#summary(wisc_dem_fit_train$gam)
+	
+	MSE_train_7var[i] <- mean((train_7var$BEH_WISC_DS_Raw - predict(wisc_dem_fit_DTI_7var, re.form = ~0))^2)
+	
+	# using the estimated parameter estimates to predict the test data
+	pred_test_7var <- predict(wisc_dem_fit_DTI_7var, newdata= test_7var, re.form=~0, na.action=na.exclude)
+	
+	MSE_test_7var[i] <- mean((test_7var$BEH_WISC_DS_Raw - pred_test_7var)^2)
+	
+}
+
+Mean_MSE_train_7var = mean(MSE_train_7var)
+Mean_MSE_test_7var = mean(MSE_test_7var)
+
+sd_MSE_train_7var = sd(MSE_train_7var)
+sd_MSE_test_7var = sd(MSE_test_7var)
+
+se_MSE_train_7var = sd_MSE_train_7var/sqrt(smp_size)
+se_MSE_test_7var = sd_MSE_test_7var/sqrt(dim(raw_data)[1]-smp_size)
+
+
+Mean_MSE_train_7var
+Mean_MSE_test_7var
+
+sd_MSE_train_7var
+sd_MSE_test_7var
+
+```
+
+
+## plotting cross validation 
+
+```{r}
+numvar = (0:7)
+
+mean_cross_train = c(Mean_MSE_train_dem, Mean_MSE_train_1var, Mean_MSE_train_2var, Mean_MSE_train_3var, Mean_MSE_train_4var, Mean_MSE_train_5var, Mean_MSE_train_6var, Mean_MSE_train_7var)
+
+mean_cross_test = c(Mean_MSE_test_dem, Mean_MSE_test_1var, Mean_MSE_test_2var, Mean_MSE_test_3var, Mean_MSE_test_4var, Mean_MSE_test_5var, Mean_MSE_test_6var, Mean_MSE_test_7var)
+
+sd_cross_train = c(sd_MSE_train_dem, sd_MSE_train_1var, sd_MSE_train_2var, sd_MSE_train_3var, sd_MSE_train_4var, sd_MSE_train_5var, sd_MSE_train_6var, sd_MSE_train_7var)
+
+sd_cross_test = c(sd_MSE_test_dem, sd_MSE_test_1var, sd_MSE_test_2var, sd_MSE_test_3var, sd_MSE_test_4var, sd_MSE_test_5var, sd_MSE_test_6var, sd_MSE_test_7var)
+
+se_cross_train = c(se_MSE_train_dem, se_MSE_train_1var, se_MSE_train_2var, se_MSE_train_3var, se_MSE_train_4var, se_MSE_train_5var, se_MSE_train_6var, se_MSE_train_7var)
+
+se_cross_test = c(se_MSE_test_dem, se_MSE_test_1var, se_MSE_test_2var, se_MSE_test_3var, se_MSE_test_4var, se_MSE_test_5var, se_MSE_test_6var, se_MSE_test_7var)
+
+
+jpeg("MSE_modelSelection.jpeg")
+plot(NA, xlim = c(0,7), ylim = c(6,10), xlab = "Models", ylab = "MSE")
+lines(numvar, mean_cross_train, col = 2, lwd = 2, lty = 1)
+lines(numvar, mean_cross_test, col = "blue", lwd = 2, lty = 1)
+arrows(numvar, mean_cross_train - 2*se_cross_train, numvar, mean_cross_train + 2*se_cross_train, angle = 90, col=2, lwd=1.2, lty=1, code=3, length=0.05)
+arrows(numvar+0.05, mean_cross_test - 2*se_cross_test, numvar+0.05, mean_cross_test + 2*se_cross_test, angle = 90, col="blue", lwd=1.2, lty=1, code=3, length=0.05)
+legend(x = 5, y=9.9, legend=c("Testing","Training"), col=c("blue","red"), lty=c(1,1), lwd = c(0.5,0.5))
+title("Model fit for models with different numbers of DTI variables")
+dev.off()
+
+
+save.image(file="COGS202_WISC_modelCrossValidation.Rdata")
+
+
+```
